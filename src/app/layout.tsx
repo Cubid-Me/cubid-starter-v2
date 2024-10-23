@@ -50,10 +50,6 @@ export default function RootLayout({
     return () => unsubscribe();
   }, []);
 
-  if (loading) {
-    return <div>Loading...</div>; // Optional: Add a loading spinner here
-  }
-
   return (
     <html lang="en">
       <body
