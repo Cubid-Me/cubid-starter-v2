@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useRouter } from "next/navigation"; // For navigation
 import { CubidSDK } from 'cubid-sdk'
 
-const sdk = new CubidSDK(process.env.DAPP_ID, process.env.API_KEY)
+const sdk = new CubidSDK(process.env.NEXT_PUBLIC_DAPP_ID, process.env.NEXT_PUBLIC_API_KEY)
 
 export default function HomePage() {
     const [user, setUser] = useState<any>(null);
