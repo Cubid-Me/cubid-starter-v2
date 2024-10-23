@@ -178,7 +178,7 @@ export default function HomePage() {
                 {activeTab === 'sdkFunctions' && (
                     <Card className="w-full max-w-xl  mt-10 bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6">
                         <CardHeader>
-                            <CardTitle className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-700 via-purple-500 to-pink-500">
+                            <CardTitle  className="text-4xl font-extrabold text-white">
                                 Welcome
                             </CardTitle>
                         </CardHeader>
@@ -259,7 +259,7 @@ export default function HomePage() {
                 {activeTab === 'widgets' && (
                     <Card className="w-full max-w-3xl mt-10 bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6">
                         <CardHeader>
-                            <CardTitle className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-700 via-purple-500 to-pink-500">
+                            <CardTitle className="text-4xl font-extrabold text-white">
                                 Widgets
                             </CardTitle>
                         </CardHeader>
