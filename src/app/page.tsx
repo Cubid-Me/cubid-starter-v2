@@ -1,3 +1,4 @@
+'use client';
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import Link from "next/link";
@@ -41,6 +42,9 @@ export default function Home() {
               <Button
                 variant="outline"
                 className="w-full py-3 font-bold text-black hover"
+                onClick={() => {
+                  window.open("https://docs.cubid.me/#/");
+                }}
               >
                 Cubid Docs
               </Button>

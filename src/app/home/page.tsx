@@ -178,7 +178,7 @@ export default function HomePage() {
                 {activeTab === 'sdkFunctions' && (
                     <Card className="w-full max-w-xl  mt-10 bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6">
                         <CardHeader>
-                            <CardTitle  className="text-4xl font-extrabold text-white">
+                            <CardTitle className="text-4xl font-extrabold text-white">
                                 Welcome
                             </CardTitle>
                         </CardHeader>
@@ -186,16 +186,49 @@ export default function HomePage() {
                             <p className="text-lg text-white/90 mb-6">
                                 {user ? `Hello, ${user.email}` : "Loading..."}
                             </p>
-
+                            <a className="text-lg text-blue-500 mb-6"  href="https://admin.cubid.me/" target="_blank">Link To Cubid Admin For API Keys</a>
                             {/* SDK Function Buttons */}
                             <Button
                                 variant="default"
                                 className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
                                 onClick={createUser}
-                                disabled={user?.uuid || loading !== null}
+                                disabled={loading !== null}
                             >
                                 {loading === 'createUser' ? 'Creating User...' : 'Create User'}
                             </Button>
+                            <Button
+                                variant="default"
+                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                onClick={fetchUserData}
+                                disabled={!user?.uuid || loading !== null}
+                            >
+                                {loading === 'fetchUserData' ? 'Loading...' : 'Fetch User Data'}
+                            </Button>
+                            <Button
+                                variant="default"
+                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                onClick={fetchIdentity}
+                                disabled={!user?.uuid || loading !== null}
+                            >
+                                {loading === 'fetchIdentity' ? 'Loading...' : 'Fetch Identity'}
+                            </Button>
+                            <Button
+                                variant="default"
+                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                onClick={fetchScore}
+                                disabled={!user?.uuid || loading !== null}
+                            >
+                                {loading === 'fetchScore' ? 'Loading...' : 'Fetch Score'}
+                            </Button>
+                            <Button
+                                variant="default"
+                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                onClick={fetchRoughLocation}
+                                disabled={!user?.uuid || loading !== null}
+                            >
+                                {loading === 'fetchRoughLocation' ? 'Loading...' : 'Fetch Rough Location'}
+                            </Button>
+
                             <Button
                                 variant="default"
                                 className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
@@ -212,38 +245,9 @@ export default function HomePage() {
                             >
                                 {loading === 'fetchExactLocation' ? 'Loading...' : 'Fetch Exact Location'}
                             </Button>
-                            <Button
-                                variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
-                                onClick={fetchIdentity}
-                                disabled={!user?.uuid || loading !== null}
-                            >
-                                {loading === 'fetchIdentity' ? 'Loading...' : 'Fetch Identity'}
-                            </Button>
-                            <Button
-                                variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
-                                onClick={fetchRoughLocation}
-                                disabled={!user?.uuid || loading !== null}
-                            >
-                                {loading === 'fetchRoughLocation' ? 'Loading...' : 'Fetch Rough Location'}
-                            </Button>
-                            <Button
-                                variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
-                                onClick={fetchUserData}
-                                disabled={!user?.uuid || loading !== null}
-                            >
-                                {loading === 'fetchUserData' ? 'Loading...' : 'Fetch User Data'}
-                            </Button>
-                            <Button
-                                variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
-                                onClick={fetchScore}
-                                disabled={!user?.uuid || loading !== null}
-                            >
-                                {loading === 'fetchScore' ? 'Loading...' : 'Fetch Score'}
-                            </Button>
+
+
+
 
                             {/* Display SDK Response */}
                             {sdkResponse && (
