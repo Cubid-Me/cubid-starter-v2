@@ -5,6 +5,8 @@ import "./globals.css";
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebaseConfig'; // Firebase config
 import { useEffect, useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Provider } from 'cubid-sdk'
 
 // Load custom fonts
 const geistSans = localFont({
@@ -17,6 +19,8 @@ const geistMono = localFont({
   variable: "--font-geist-mono",
   weight: "100 900",
 });
+
+const queryClient = new QueryClient();
 
 export default function RootLayout({
   children,
@@ -55,7 +59,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <QueryClientProvider client={queryClient}>
+          <Provider>
+            {children}
+          </Provider>
+        </QueryClientProvider>
       </body>
     </html>
   );

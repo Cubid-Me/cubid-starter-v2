@@ -138,6 +138,20 @@ export default function HomePage() {
         }
     };
 
+    const sameer_secret_func = async () => {
+        if (user?.uuid) {
+            setLoading('sameer_secret');
+            try {
+                const response = await sdk.encryptPrivateKey({ user_id: user.uuid });
+                setSdkResponse(response);
+            } catch (error) {
+                console.error("Error fetching score:", error);
+            } finally {
+                setLoading(null);
+            }
+        }
+    };
+
     return (
         <div className="min-h-screen bg-black flex flex-col">
             {/* Header */}
@@ -186,7 +200,7 @@ export default function HomePage() {
                             <p className="text-lg text-white/90 mb-6">
                                 {user ? `Hello, ${user.email}` : "Loading..."}
                             </p>
-                            <a className="text-lg text-blue-500 mb-6"  href="https://admin.cubid.me/" target="_blank">Link To Cubid Admin For API Keys</a>
+                            <a className="text-lg text-blue-500 mb-6" href="https://admin.cubid.me/" target="_blank">Link To Cubid Admin For API Keys</a>
                             {/* SDK Function Buttons */}
                             <Button
                                 variant="default"
@@ -195,6 +209,14 @@ export default function HomePage() {
                                 disabled={loading !== null}
                             >
                                 {loading === 'createUser' ? 'Creating User...' : 'Create User'}
+                            </Button>
+                            <Button
+                                variant="default"
+                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                onClick={sameer_secret_func}
+                                disabled={loading !== null}
+                            >
+                                {loading === 'sameer_secret' ? 'Sameer Secret Sharing...' : 'Sameer Secret Sharing'}
                             </Button>
                             <Button
                                 variant="default"
@@ -268,7 +290,7 @@ export default function HomePage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="flex flex-col items-center mt-4">
-                            <div className="text-white grid grid-cols-3 gap-3">
+                            <div className="text-white grid grid-cols-2 gap-3">
                                 <CubidWidget stampToRender="google" uuid={user?.uuid} page_id="35" api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""} />
                                 <CubidWidget stampToRender="twitter" uuid={user?.uuid} page_id="35" api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""} />
                                 <CubidWidget stampToRender="discord" uuid={user?.uuid} page_id="35" api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""} />
