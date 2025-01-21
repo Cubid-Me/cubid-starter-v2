@@ -6,6 +6,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebaseConfig'; // Firebase config
 import { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+// @ts-ignore
 import { Provider } from 'cubid-sdk'
 
 // Load custom fonts

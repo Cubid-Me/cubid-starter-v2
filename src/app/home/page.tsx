@@ -4,6 +4,7 @@ import { auth } from "@/lib/firebaseConfig"; // Firebase config file
 import { onAuthStateChanged, signOut } from "firebase/auth"; // Firebase methods
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+// @ts-ignore
 import { CubidSDK, CubidWidget } from 'cubid-sdk';
 
 // Initialize the SDK
