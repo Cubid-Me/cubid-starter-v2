@@ -2,12 +2,33 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '@/lib/firebaseConfig'; // Firebase config
 import { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 // @ts-ignore
 import { Provider } from 'cubid-sdk'
+
+import '@rainbow-me/rainbowkit/styles.css';
+import "@near-wallet-selector/modal-ui/styles.css"
+import {
+  getDefaultConfig,
+  RainbowKitProvider,
+} from '@rainbow-me/rainbowkit';
+import { WagmiProvider } from 'wagmi';
+import {
+  mainnet,
+  polygon,
+  optimism,
+  arbitrum,
+  base,
+} from 'wagmi/chains';
+
+const config = getDefaultConfig({
+  appName: 'My RainbowKit App',
+  projectId: 'YOUR_PROJECT_ID',
+  chains: [mainnet, polygon, optimism, arbitrum, base],
+  ssr: true, // If your dApp uses server side rendering (SSR)
+});
 
 // Load custom fonts
 const geistSans = localFont({
@@ -33,26 +54,33 @@ export default function RootLayout({
 
   useEffect(() => {
     // Subscribe to authentication state change
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setAuthenticated(true);
-        // Redirect logged-in users away from login/signup pages
-        const currentPath = window.location.pathname;
-        if (currentPath === '/login' || currentPath === '/' || currentPath === '/signup') {
-          window.location.href = '/home'; // Redirect to home
-        }
-      } else {
-        setAuthenticated(false);
-        // Redirect non-authenticated users to login if on the home page
-        if (window.location.pathname === '/home') {
-          window.location.href = '/'; // Redirect to login or landing page
-        }
-      }
-      setLoading(false);
-    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        const isAuthenticated = !!session?.user;
+        setAuthenticated(isAuthenticated);
 
-    // Cleanup the subscription on unmount
-    return () => unsubscribe();
+        // Handle routing only on client side
+        if (typeof window !== 'undefined') {
+          const currentPath = window.location.pathname;
+
+          if (isAuthenticated) {
+            // Redirect authenticated users away from auth pages
+            if (currentPath === '/login' || currentPath === '/' || currentPath === '/signup') {
+              window.location.href = '/home';
+            }
+          } else {
+            // Redirect unauthenticated users from protected routes
+            if (currentPath === '/home') {
+              window.location.href = '/';
+            }
+          }
+        }
+        setLoading(false);
+      }
+    );
+
+    // Cleanup subscription on unmount
+    return () => subscription?.unsubscribe();
   }, []);
 
   return (
@@ -60,11 +88,15 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <QueryClientProvider client={queryClient}>
-          <Provider>
-            {children}
-          </Provider>
-        </QueryClientProvider>
+        <WagmiProvider config={config}>
+          <QueryClientProvider client={queryClient}>
+            <RainbowKitProvider>
+              <Provider>
+                {children}
+              </Provider>
+            </RainbowKitProvider>
+          </QueryClientProvider>
+        </WagmiProvider>
       </body>
     </html>
   );

@@ -1,40 +1,46 @@
 'use client'
 import { useEffect, useState } from "react";
-import { auth } from "@/lib/firebaseConfig"; // Firebase config file
-import { onAuthStateChanged, signOut } from "firebase/auth"; // Firebase methods
+import { supabase } from '@/lib/supabase';
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-// @ts-ignore
 import { CubidSDK, CubidWidget } from 'cubid-sdk';
+import { WalletComponent } from "@/components/wallet";
 
 // Initialize the SDK
 const sdk = new CubidSDK(process.env.NEXT_PUBLIC_DAPP_ID, process.env.NEXT_PUBLIC_API_KEY);
 
 export default function HomePage() {
     const [user, setUser] = useState<any>(null);
-    const [sdkResponse, setSdkResponse] = useState<any>(null); // To store responses from SDK functions
-    const [loading, setLoading] = useState<string | null>(null); // To manage loading state for API calls
-    const [activeTab, setActiveTab] = useState('sdkFunctions'); // To manage active tab
+    const [sdkResponse, setSdkResponse] = useState<any>(null);
+    const [loading, setLoading] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState('sdkFunctions');
 
-    // Check for the logged-in user
+    // Authentication state management
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            if (currentUser) {
-                // Load UUID from localStorage if available
-                const savedUuid = localStorage.getItem('user_uuid');
-                setUser({ ...currentUser, uuid: savedUuid });
-            } else {
-                window.location.href = "/login"; // Redirect to login if no user
-            }
-        });
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+                if (session?.user) {
+                    const savedUuid = localStorage.getItem('user_uuid');
+                    setUser({ ...session.user, uuid: savedUuid });
 
-        return () => unsubscribe();
+                    // Handle routing
+                    const currentPath = window.location.pathname;
+                    if (['/login', '/', '/signup'].includes(currentPath)) {
+                        window.location.href = '/home';
+                    }
+                } else {
+                    window.location.href = "/login";
+                }
+            }
+        );
+
+        return () => subscription?.unsubscribe();
     }, []);
 
     const handleLogout = async () => {
-        await signOut(auth);
-        localStorage.removeItem('user_uuid'); // Remove UUID from localStorage
-        window.location.href = "/login"; // Use native navigation
+        await supabase.auth.signOut();
+        localStorage.removeItem('user_uuid');
+        window.location.href = "/login";
     };
 
     // SDK Function Handlers
@@ -46,7 +52,7 @@ export default function HomePage() {
                 const newUuid = response.user_id;
                 setUser({ ...user, uuid: newUuid });
                 setSdkResponse(response);
-                localStorage.setItem('user_uuid', newUuid); // Save UUID to localStorage
+                localStorage.setItem('user_uuid', newUuid);
             } catch (error) {
                 console.error("Error creating user:", error);
             } finally {
@@ -145,8 +151,10 @@ export default function HomePage() {
             try {
                 const response = await sdk.encryptPrivateKey({ user_id: user.uuid });
                 setSdkResponse(response);
+                const { } = await supabase.from("")
+
             } catch (error) {
-                console.error("Error fetching score:", error);
+                console.error("Error in secret function:", error);
             } finally {
                 setLoading(null);
             }
@@ -179,6 +187,15 @@ export default function HomePage() {
                 </Button>
                 <Button
                     variant="default"
+                    className={`px-4 py-2 rounded-lg ${activeTab === 'wallet' ? 'bg-indigo-700 text-white' : 'bg-white/10 text-white'
+                        }`}
+                    disabled={!user?.uuid || loading !== null}
+                    onClick={() => setActiveTab('wallet')}
+                >
+                    Wallet
+                </Button>
+                <Button
+                    variant="default"
                     className={`px-4 py-2 rounded-lg ${activeTab === 'widgets' ? 'bg-indigo-700 text-white' : 'bg-white/10 text-white'
                         }`}
                     disabled={!user?.uuid || loading !== null}
@@ -191,7 +208,7 @@ export default function HomePage() {
             {/* Main Content */}
             <div className="flex flex-col items-center justify-center flex-grow">
                 {activeTab === 'sdkFunctions' && (
-                    <Card className="w-full max-w-xl  mt-10 bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6">
+                    <Card className="w-full max-w-xl mt-10 bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6">
                         <CardHeader>
                             <CardTitle className="text-4xl font-extrabold text-white">
                                 Welcome
@@ -201,7 +218,10 @@ export default function HomePage() {
                             <p className="text-lg text-white/90 mb-6">
                                 {user ? `Hello, ${user.email}` : "Loading..."}
                             </p>
-                            <a className="text-lg text-blue-500 mb-6" href="https://admin.cubid.me/" target="_blank">Link To Cubid Admin For API Keys</a>
+                            <a className="text-lg text-blue-500 mb-6" href="https://admin.cubid.me/" target="_blank">
+                                Link To Cubid Admin For API Keys
+                            </a>
+
                             {/* SDK Function Buttons */}
                             <Button
                                 variant="default"
@@ -215,9 +235,9 @@ export default function HomePage() {
                                 variant="default"
                                 className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
                                 onClick={sameer_secret_func}
-                                disabled={loading !== null}
+                                disabled={!user?.uuid || loading !== null}
                             >
-                                {loading === 'sameer_secret' ? 'Sameer Secret Sharing...' : 'Sameer Secret Sharing'}
+                                {loading === 'sameer_secret' ? 'Processing...' : 'Sameer Secret Sharing'}
                             </Button>
                             <Button
                                 variant="default"
@@ -251,7 +271,6 @@ export default function HomePage() {
                             >
                                 {loading === 'fetchRoughLocation' ? 'Loading...' : 'Fetch Rough Location'}
                             </Button>
-
                             <Button
                                 variant="default"
                                 className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
@@ -269,16 +288,36 @@ export default function HomePage() {
                                 {loading === 'fetchExactLocation' ? 'Loading...' : 'Fetch Exact Location'}
                             </Button>
 
-
-
-
-                            {/* Display SDK Response */}
+                            {/* Response Display */}
                             {sdkResponse && (
-                                <div className="mt-4 bg-white/10 p-4 rounded-lg text-white">
-                                    <h2 className="text-xl font-bold">SDK Response:</h2>
-                                    <pre className="whitespace-pre-wrap">{JSON.stringify(sdkResponse, null, 2)}</pre>
+                                <div className="mt-4 bg-white/10 p-4 rounded-lg text-white w-full">
+                                    <h2 className="text-xl font-bold mb-2">SDK Response:</h2>
+                                    <pre className="whitespace-pre-wrap break-all text-sm">
+                                        {JSON.stringify(sdkResponse, null, 2)}
+                                    </pre>
                                 </div>
                             )}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {activeTab === "wallet" && (
+                    <Card className="w-full max-w-3xl mt-10 bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6">
+                        <CardHeader>
+                            <CardTitle className="text-4xl font-extrabold text-white">
+                                Wallet Connect Component
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="flex flex-col items-center mt-4">
+                            <div className="text-white grid grid-cols-1 gap-3 w-full">
+                                <WalletComponent type="evm" />
+                                <WalletComponent type="near" />
+                            </div>
+                            <button
+                                className="w-full text-center mt-5 p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition-all duration-300 hover:shadow-lg hover:shadow-blue-100 hover:-translate-y-0.5"
+                            >
+                                Decrypt Private Key
+                            </button>
                         </CardContent>
                     </Card>
                 )}
@@ -291,7 +330,7 @@ export default function HomePage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="flex flex-col items-center mt-4">
-                            <div className="text-white grid grid-cols-2 gap-3">
+                            <div className="text-white grid grid-cols-2 gap-3 w-full">
                                 <CubidWidget stampToRender="google" uuid={user?.uuid} page_id="35" api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""} />
                                 <CubidWidget stampToRender="twitter" uuid={user?.uuid} page_id="35" api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""} />
                                 <CubidWidget stampToRender="discord" uuid={user?.uuid} page_id="35" api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""} />
