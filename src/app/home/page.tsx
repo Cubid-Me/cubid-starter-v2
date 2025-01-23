@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { CubidSDK, CubidWidget } from 'cubid-sdk';
 import { WalletComponent } from "@/components/wallet";
+import { WebAuthnCrypto } from "@/lib/webAuthnEncypt";
 
 // Initialize the SDK
 const sdk = new CubidSDK(process.env.NEXT_PUBLIC_DAPP_ID, process.env.NEXT_PUBLIC_API_KEY);
+const WebAuthN = new WebAuthnCrypto();
 
 export default function HomePage() {
     const [user, setUser] = useState<any>(null);
@@ -314,6 +316,10 @@ export default function HomePage() {
                                 <WalletComponent type="near" />
                             </div>
                             <button
+                                onClick={async () => {
+                                    const auth = await WebAuthN.decryptDeviceShare()
+                                    console.log({ auth })
+                                }}
                                 className="w-full text-center mt-5 p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition-all duration-300 hover:shadow-lg hover:shadow-blue-100 hover:-translate-y-0.5"
                             >
                                 Decrypt Private Key

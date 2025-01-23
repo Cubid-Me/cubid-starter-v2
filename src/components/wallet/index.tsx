@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CubidSDK } from 'cubid-sdk';
 import { useAuth } from '@/lib/useAuth';
 import { supabase } from '@/lib/supabase';
+import { WebAuthnCrypto } from '@/lib/webAuthnEncypt';
 
 interface WalletComp {
     type: "evm" | "near";
@@ -18,6 +19,8 @@ const sdk = new CubidSDK(process.env.NEXT_PUBLIC_DAPP_ID, process.env.NEXT_PUBLI
 
 
 wallet.startUp()
+
+const WebAuthN = new WebAuthnCrypto();
 
 export const WalletComponent = (props: WalletComp) => {
     const inEvm = props.type === "evm";
@@ -116,7 +119,8 @@ export const WalletComponent = (props: WalletComp) => {
                         app_share: user_shares?.[0],
                         account_id: data?.[0]?.id
                     })
-                    downloadTextFile(user_shares?.[1], 'shameer_share.txt')
+                    await WebAuthN.generateKeyPair()
+                    await WebAuthN.encryptDeviceShare(user_shares?.[1])
                 }} className="mt-4 w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-[1.02] shadow-lg hover:shadow-blue-500/20">
                     Create New On-Chain Account
                 </button>
