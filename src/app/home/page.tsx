@@ -7,15 +7,61 @@ import { CubidSDK, CubidWidget } from 'cubid-sdk';
 import { WalletComponent } from "@/components/wallet";
 import { WebAuthnCrypto } from "@/lib/webAuthnEncypt";
 
-// Initialize the SDK
+// Initialize the SDK with environment variables
 const sdk = new CubidSDK(process.env.NEXT_PUBLIC_DAPP_ID, process.env.NEXT_PUBLIC_API_KEY);
 const WebAuthN = new WebAuthnCrypto();
 
+// Custom CSS for tooltips that work with disabled buttons
+const tooltipStyles = `
+  .tooltip-wrapper {
+    position: relative;
+  }
+
+  .tooltip-wrapper[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    white-space: nowrap;
+    z-index: 1000;
+  }
+
+  .tooltip-wrapper[data-tooltip]:hover::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 5px;
+    border-style: solid;
+    border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+    z-index: 1000;
+  }
+`;
+
 export default function HomePage() {
+    // State management
     const [user, setUser] = useState<any>(null);
     const [sdkResponse, setSdkResponse] = useState<any>(null);
     const [loading, setLoading] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState('sdkFunctions');
+
+    // Inject tooltip styles when component mounts
+    useEffect(() => {
+        const style = document.createElement('style');
+        style.innerHTML = tooltipStyles;
+        document.head.appendChild(style);
+
+        return () => {
+            document.head.removeChild(style);
+        };
+    }, []);
 
     // Authentication state management
     useEffect(() => {
@@ -39,6 +85,7 @@ export default function HomePage() {
         return () => subscription?.unsubscribe();
     }, []);
 
+    // Logout handler
     const handleLogout = async () => {
         await supabase.auth.signOut();
         localStorage.removeItem('user_uuid');
@@ -165,7 +212,7 @@ export default function HomePage() {
 
     return (
         <div className="min-h-screen bg-black flex flex-col">
-            {/* Header */}
+            {/* Header Section */}
             <header className="w-full p-6 flex justify-between items-center bg-transparent backdrop-blur-lg">
                 <h1 className="text-3xl font-bold text-white">Cubid App</h1>
                 <Button
@@ -181,34 +228,58 @@ export default function HomePage() {
             <div className="flex justify-center space-x-4 mt-4">
                 <Button
                     variant="default"
-                    className={`px-4 py-2 rounded-lg ${activeTab === 'sdkFunctions' ? 'bg-indigo-700 text-white' : 'bg-white/10 text-white'
-                        }`}
+                    className={`px-4 py-2 rounded-lg ${activeTab === 'sdkFunctions' ? 'bg-indigo-700 text-white' : 'bg-white/10 text-white'}`}
                     onClick={() => setActiveTab('sdkFunctions')}
                 >
                     SDK Functions
                 </Button>
-                <Button
-                    variant="default"
-                    className={`px-4 py-2 rounded-lg ${activeTab === 'wallet' ? 'bg-indigo-700 text-white' : 'bg-white/10 text-white'
-                        }`}
-                    disabled={!user?.uuid || loading !== null}
-                    onClick={() => setActiveTab('wallet')}
-                >
-                    Wallet
-                </Button>
-                <Button
-                    variant="default"
-                    className={`px-4 py-2 rounded-lg ${activeTab === 'widgets' ? 'bg-indigo-700 text-white' : 'bg-white/10 text-white'
-                        }`}
-                    disabled={!user?.uuid || loading !== null}
-                    onClick={() => setActiveTab('widgets')}
-                >
-                    Widgets
-                </Button>
+                {/* Conditional rendering for wallet tab */}
+                {!user?.uuid ? (
+                    <div className="tooltip-wrapper" data-tooltip="Please create user first">
+                        <Button
+                            variant="default"
+                            className={`px-4 py-2 rounded-lg ${activeTab === 'wallet' ? 'bg-indigo-700 text-white' : 'bg-white/10 text-white'}`}
+                            disabled={true}
+                        >
+                            Wallet
+                        </Button>
+                    </div>
+                ) : (
+                    <Button
+                        variant="default"
+                        className={`px-4 py-2 rounded-lg ${activeTab === 'wallet' ? 'bg-indigo-700 text-white' : 'bg-white/10 text-white'}`}
+                        onClick={() => setActiveTab('wallet')}
+                        disabled={loading !== null}
+                    >
+                        Wallet
+                    </Button>
+                )}
+                {/* Conditional rendering for widgets tab */}
+                {!user?.uuid ? (
+                    <div className="tooltip-wrapper" data-tooltip="Please create user first">
+                        <Button
+                            variant="default"
+                            className={`px-4 py-2 rounded-lg ${activeTab === 'widgets' ? 'bg-indigo-700 text-white' : 'bg-white/10 text-white'}`}
+                            disabled={true}
+                        >
+                            Widgets
+                        </Button>
+                    </div>
+                ) : (
+                    <Button
+                        variant="default"
+                        className={`px-4 py-2 rounded-lg ${activeTab === 'widgets' ? 'bg-indigo-700 text-white' : 'bg-white/10 text-white'}`}
+                        onClick={() => setActiveTab('widgets')}
+                        disabled={loading !== null}
+                    >
+                        Widgets
+                    </Button>
+                )}
             </div>
 
-            {/* Main Content */}
+            {/* Main Content Area */}
             <div className="flex flex-col items-center justify-center flex-grow">
+                {/* SDK Functions Tab */}
                 {activeTab === 'sdkFunctions' && (
                     <Card className="w-full max-w-xl mt-10 bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6">
                         <CardHeader>
@@ -224,73 +295,173 @@ export default function HomePage() {
                                 Link To Cubid Admin For API Keys
                             </a>
 
-                            {/* SDK Function Buttons */}
+                            {/* Create User Button - Always visible */}
                             <Button
                                 variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
                                 onClick={createUser}
                                 disabled={loading !== null}
                             >
                                 {loading === 'createUser' ? 'Creating User...' : 'Create User'}
                             </Button>
-                            <Button
-                                variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
-                                onClick={sameer_secret_func}
-                                disabled={!user?.uuid || loading !== null}
-                            >
-                                {loading === 'sameer_secret' ? 'Processing...' : 'Sameer Secret Sharing'}
-                            </Button>
-                            <Button
-                                variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
-                                onClick={fetchUserData}
-                                disabled={!user?.uuid || loading !== null}
-                            >
-                                {loading === 'fetchUserData' ? 'Loading...' : 'Fetch User Data'}
-                            </Button>
-                            <Button
-                                variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
-                                onClick={fetchIdentity}
-                                disabled={!user?.uuid || loading !== null}
-                            >
-                                {loading === 'fetchIdentity' ? 'Loading...' : 'Fetch Identity'}
-                            </Button>
-                            <Button
-                                variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
-                                onClick={fetchScore}
-                                disabled={!user?.uuid || loading !== null}
-                            >
-                                {loading === 'fetchScore' ? 'Loading...' : 'Fetch Score'}
-                            </Button>
-                            <Button
-                                variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
-                                onClick={fetchRoughLocation}
-                                disabled={!user?.uuid || loading !== null}
-                            >
-                                {loading === 'fetchRoughLocation' ? 'Loading...' : 'Fetch Rough Location'}
-                            </Button>
-                            <Button
-                                variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
-                                onClick={fetchApproxLocation}
-                                disabled={!user?.uuid || loading !== null}
-                            >
-                                {loading === 'fetchApproxLocation' ? 'Loading...' : 'Fetch Approx Location'}
-                            </Button>
-                            <Button
-                                variant="default"
-                                className="w-full py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
-                                onClick={fetchExactLocation}
-                                disabled={!user?.uuid || loading !== null}
-                            >
-                                {loading === 'fetchExactLocation' ? 'Loading...' : 'Fetch Exact Location'}
-                            </Button>
 
-                            {/* Response Display */}
+                            {/* SDK Function Buttons with Conditional Tooltips */}
+                            {/* Each button is conditionally rendered based on user.uuid */}
+                            {!user?.uuid ? (
+                                <div className="tooltip-wrapper" data-tooltip="Please create user first">
+                                    <Button
+                                        variant="default"
+                                        className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                        onClick={sameer_secret_func}
+                                        disabled={true}
+                                    >
+                                        Sameer Secret Sharing
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button
+                                    variant="default"
+                                    className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                    onClick={sameer_secret_func}
+                                    disabled={loading !== null}
+                                >
+                                    {loading === 'sameer_secret' ? 'Processing...' : 'Sameer Secret Sharing'}
+                                </Button>
+                            )}
+
+                            {!user?.uuid ? (
+                                <div className="tooltip-wrapper" data-tooltip="Please create user first">
+                                    <Button
+                                        variant="default"
+                                        className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                        onClick={fetchUserData}
+                                        disabled={true}
+                                    >
+                                        Fetch User Data
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button
+                                    variant="default"
+                                    className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                    onClick={fetchUserData}
+                                    disabled={loading !== null}
+                                >
+                                    {loading === 'fetchUserData' ? 'Loading...' : 'Fetch User Data'}
+                                </Button>
+                            )}
+
+                            {!user?.uuid ? (
+                                <div className="tooltip-wrapper" data-tooltip="Please create user first">
+                                    <Button
+                                        variant="default"
+                                        className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                        onClick={fetchIdentity}
+                                        disabled={true}
+                                    >
+                                        Fetch Identity
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button
+                                    variant="default"
+                                    className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                    onClick={fetchIdentity}
+                                    disabled={loading !== null}
+                                >
+                                    {loading === 'fetchIdentity' ? 'Loading...' : 'Fetch Identity'}
+                                </Button>
+                            )}
+
+                            {!user?.uuid ? (
+                                <div className="tooltip-wrapper" data-tooltip="Please create user first">
+                                    <Button
+                                        variant="default"
+                                        className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                        onClick={fetchScore}
+                                        disabled={true}
+                                    >
+                                        Fetch Score
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button
+                                    variant="default"
+                                    className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                    onClick={fetchScore}
+                                    disabled={loading !== null}
+                                >
+                                    {loading === 'fetchScore' ? 'Loading...' : 'Fetch Score'}
+                                </Button>
+                            )}
+
+                            {!user?.uuid ? (
+                                <div className="tooltip-wrapper" data-tooltip="Please create user first">
+                                    <Button
+                                        variant="default"
+                                        className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                        onClick={fetchRoughLocation}
+                                        disabled={true}
+                                    >
+                                        Fetch Rough Location
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button
+                                    variant="default"
+                                    className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                    onClick={fetchRoughLocation}
+                                    disabled={loading !== null}
+                                >
+                                    {loading === 'fetchRoughLocation' ? 'Loading...' : 'Fetch Rough Location'}
+                                </Button>
+                            )}
+
+                            {!user?.uuid ? (
+                                <div className="tooltip-wrapper" data-tooltip="Please create user first">
+                                    <Button
+                                        variant="default"
+                                        className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                        onClick={fetchApproxLocation}
+                                        disabled={true}
+                                    >
+                                        Fetch Approx Location
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button
+                                    variant="default"
+                                    className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                    onClick={fetchApproxLocation}
+                                    disabled={loading !== null}
+                                >
+                                    {loading === 'fetchApproxLocation' ? 'Loading...' : 'Fetch Approx Location'}
+                                </Button>
+                            )}
+
+                            {!user?.uuid ? (
+                                <div className="tooltip-wrapper" data-tooltip="Please create user first">
+                                    <Button
+                                        variant="default"
+                                        className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                        onClick={fetchExactLocation}
+                                        disabled={true}
+                                    >
+                                        Fetch Exact Location
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button
+                                    variant="default"
+                                    className="w-80 py-3 mb-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:opacity-90 transition-all duration-300"
+                                    onClick={fetchExactLocation}
+                                    disabled={loading !== null}
+                                >
+                                    {loading === 'fetchExactLocation' ? 'Loading...' : 'Fetch Exact Location'}
+                                </Button>
+                            )}
+
+                            {/* Response Display Section */}
                             {sdkResponse && (
                                 <div className="mt-4 bg-white/10 p-4 rounded-lg text-white w-full">
                                     <h2 className="text-xl font-bold mb-2">SDK Response:</h2>
@@ -303,6 +474,7 @@ export default function HomePage() {
                     </Card>
                 )}
 
+                {/* Wallet Tab Content */}
                 {activeTab === "wallet" && (
                     <Card className="w-full max-w-3xl mt-10 bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6">
                         <CardHeader>
@@ -311,23 +483,32 @@ export default function HomePage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="flex flex-col items-center mt-4">
+                            {/* Wallet Components */}
                             <div className="text-white grid grid-cols-1 gap-3 w-full">
                                 <WalletComponent type="evm" />
                                 <WalletComponent type="near" />
                             </div>
-                            <button
-                                onClick={async () => {
-                                    const auth = await WebAuthN.decryptDeviceShare()
-                                    console.log({ auth })
-                                }}
-                                className="w-full text-center mt-5 p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition-all duration-300 hover:shadow-lg hover:shadow-blue-100 hover:-translate-y-0.5"
-                            >
-                                Decrypt Private Key
-                            </button>
+
+                            {/* Decrypt Button with Tooltip */}
+                            <div className="tooltip-wrapper w-full" data-tooltip={!user?.uuid ? "Please create user first" : ""}>
+                                <button
+                                    onClick={async () => {
+                                        const auth = await WebAuthN.decryptDeviceShare();
+                                        console.log({ auth });
+                                    }}
+                                    className="w-full text-center mt-5 p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 
+                                             transition-all duration-300 hover:shadow-lg hover:shadow-blue-100 hover:-translate-y-0.5 
+                                             disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
+                                    disabled={!user?.uuid}
+                                >
+                                    Decrypt Private Key
+                                </button>
+                            </div>
                         </CardContent>
                     </Card>
                 )}
 
+                {/* Widgets Tab Content */}
                 {activeTab === 'widgets' && (
                     <Card className="w-full max-w-3xl mt-10 bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6">
                         <CardHeader>
@@ -336,12 +517,47 @@ export default function HomePage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="flex flex-col items-center mt-4">
+                            {/* Social Media Widgets Grid */}
                             <div className="text-white grid grid-cols-2 gap-3 w-full">
-                                <CubidWidget stampToRender="google" uuid={user?.uuid} page_id="35" api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""} />
-                                <CubidWidget stampToRender="twitter" uuid={user?.uuid} page_id="35" api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""} />
-                                <CubidWidget stampToRender="discord" uuid={user?.uuid} page_id="35" api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""} />
-                                <CubidWidget stampToRender="github" uuid={user?.uuid} page_id="35" api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""} />
-                                <CubidWidget stampToRender="facebook" uuid={user?.uuid} page_id="35" api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""} />
+                                {/* Google Widget */}
+                                <CubidWidget
+                                    stampToRender="google"
+                                    uuid={user?.uuid}
+                                    page_id="35"
+                                    api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""}
+                                />
+
+                                {/* Twitter Widget */}
+                                <CubidWidget
+                                    stampToRender="twitter"
+                                    uuid={user?.uuid}
+                                    page_id="35"
+                                    api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""}
+                                />
+
+                                {/* Discord Widget */}
+                                <CubidWidget
+                                    stampToRender="discord"
+                                    uuid={user?.uuid}
+                                    page_id="35"
+                                    api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""}
+                                />
+
+                                {/* GitHub Widget */}
+                                <CubidWidget
+                                    stampToRender="github"
+                                    uuid={user?.uuid}
+                                    page_id="35"
+                                    api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""}
+                                />
+
+                                {/* Facebook Widget */}
+                                <CubidWidget
+                                    stampToRender="facebook"
+                                    uuid={user?.uuid}
+                                    page_id="35"
+                                    api_key={process.env.NEXT_PUBLIC_API_KEY ?? ""}
+                                />
                             </div>
                         </CardContent>
                     </Card>

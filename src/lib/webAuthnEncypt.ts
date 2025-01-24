@@ -1,4 +1,5 @@
 import * as CBOR from 'cbor-web';
+import QRCode from 'qrcode';
 
 // Custom error types for better error handling and debugging
 class WebAuthnCryptoError extends Error {
@@ -44,7 +45,7 @@ export class WebAuthnCrypto {
         this.credentialId = null;
         this.publicKey = null;
         this.db = null;
-        
+
         // Initialize database connection when class is instantiated
         this.initializeDatabase().catch((error) => {
             console.error('Failed to initialize database:', error);
@@ -60,7 +61,7 @@ export class WebAuthnCrypto {
 
                 request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
                     const db = (event.target as IDBOpenDBRequest).result;
-                    
+
                     // Create object stores if they don't exist
                     if (!db.objectStoreNames.contains('encryptedData')) {
                         db.createObjectStore('encryptedData', { keyPath: 'id' });
@@ -81,181 +82,214 @@ export class WebAuthnCrypto {
     }
 
     // Generate a new WebAuthn credential pair
-    public async generateKeyPair(): Promise<WebAuthnCredential> {
+    public async generateKeyPair(): Promise<any> {
         try {
-            console.log('Starting WebAuthn credential generation...');
-            
-            // Check if running in a secure context
-            if (!window.isSecureContext) {
-                throw new WebAuthnCryptoError('WebAuthn requires a secure context (HTTPS)');
-            }
-            
-            // Check if WebAuthn is supported
-            if (!window.PublicKeyCredential) {
-                throw new WebAuthnCryptoError('WebAuthn is not supported in this browser');
-            }
-            // First, verify that a platform authenticator is available
-            const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-            if (!available) {
-                throw new Error('No hardware authenticator available on this device');
-            }
+            if (await this.isWebAuthnSupported()) {
+                const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
+                    challenge: crypto.getRandomValues(new Uint8Array(32)),
+                    rp: {
+                        name: 'Hardware-Backed Device Share',
+                        id: window.location.hostname
+                    },
+                    user: {
+                        id: new TextEncoder().encode('hardware-auth-user'),
+                        name: 'hardware-auth-user',
+                        displayName: 'Hardware Authenticator User'
+                    },
+                    pubKeyCredParams: [
+                        { type: 'public-key', alg: -7 }
+                    ],
+                    authenticatorSelection: {
+                        authenticatorAttachment: 'platform',
+                        requireResidentKey: false,
+                        userVerification: 'required'
+                    },
+                    extensions: {
+                        credProps: true
+                    },
+                    timeout: 60000,
+                    attestation: 'none'
+                };
 
-            console.log('Creating WebAuthn credential...');
+                const credential = await navigator.credentials.create({
+                    publicKey: publicKeyCredentialCreationOptions
+                }) as PublicKeyCredential;
 
-            // Configure the credential creation options
-            const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
-                challenge: crypto.getRandomValues(new Uint8Array(32)),
-                rp: {
-                    name: 'Hardware-Backed Device Share',
-                    id: window.location.hostname
-                },
-                user: {
-                    id: new TextEncoder().encode('hardware-auth-user'),
-                    name: 'hardware-auth-user',
-                    displayName: 'Hardware Authenticator User'
-                },
-                pubKeyCredParams: [
-                    { type: 'public-key', alg: -7 } // ES256 (ECDSA with P-256)
-                ],
-                authenticatorSelection: {
-                    authenticatorAttachment: 'platform',
-                    requireResidentKey: false,
-                    userVerification: 'required'
-                },
-                extensions: {
-                    credProps: true
-                },
-                timeout: 60000,
-                attestation: 'none'
-            };
+                const response = credential.response as AuthenticatorAttestationResponse;
+                const attestationBuffer = new Uint8Array(response.attestationObject);
+                const decodedAttestationObj = await CBOR.decodeFirst(attestationBuffer);
+                const authData = new Uint8Array(decodedAttestationObj.authData);
 
-            // Create the credential
-            const credential = await navigator.credentials.create({
-                publicKey: publicKeyCredentialCreationOptions
-            }) as PublicKeyCredential;
+                const flags = authData[32];
+                const hasAttestedCredentialData = (flags & 0x40) === 0x40;
 
-            console.log('Credential created successfully, parsing response...');
+                if (!hasAttestedCredentialData) {
+                    throw new Error('No attested credential data in authentication response');
+                }
 
-            // Parse the attestation response
-            const response = credential.response as AuthenticatorAttestationResponse;
-            const attestationBuffer = new Uint8Array(response.attestationObject);
-            const decodedAttestationObj = await CBOR.decodeFirst(attestationBuffer);
-            
-            // Parse authenticator data
-            const authData = new Uint8Array(decodedAttestationObj.authData);
-            console.log('Auth data length:', authData.length);
-            
-            // The first 32 bytes are the RP ID hash
-            const rpIdHash = authData.slice(0, 32);
-            console.log('RP ID Hash:', Buffer.from(rpIdHash).toString('hex'));
-            
-            // The next byte contains the flags
-            const flags = authData[32];
-            const hasAttestedCredentialData = (flags & 0x40) === 0x40;
-            console.log('Flags:', flags.toString(2).padStart(8, '0'));
-            console.log('Has attested credential data:', hasAttestedCredentialData);
-            
-            if (!hasAttestedCredentialData) {
-                throw new Error('No attested credential data in authentication response');
-            }
+                let pointer = 37;
+                const aaguid = authData.slice(pointer, pointer + 16);
+                pointer += 16;
 
-            // The next 4 bytes are the signature counter
-            const counterBuffer = authData.slice(33, 37);
-            const counter = new DataView(counterBuffer.buffer).getUint32(0, false);
-            console.log('Signature counter:', counter);
+                const credentialIdLengthBytes = authData.slice(pointer, pointer + 2);
+                const credentialIdLength = new DataView(credentialIdLengthBytes.buffer).getUint16(0, false);
+                pointer += 2;
 
-            // Now we're at the attested credential data
-            let pointer = 37; // 32 + 1 + 4 (rpIdHash + flags + counter)
+                if (pointer + credentialIdLength > authData.byteLength) {
+                    throw new WebAuthnCryptoError('Invalid credential ID length in authenticator data');
+                }
 
-            // The next 16 bytes are the AAGUID
-            const aaguid = authData.slice(pointer, pointer + 16);
-            console.log('AAGUID:', Buffer.from(aaguid).toString('hex'));
-            pointer += 16;
+                this.credentialId = new Uint8Array(authData.slice(pointer, pointer + credentialIdLength));
+                pointer += credentialIdLength;
 
-            // Now read credential ID length (2 bytes)
-            const credentialIdLengthBytes = authData.slice(pointer, pointer + 2);
-            const credentialIdLength = new DataView(credentialIdLengthBytes.buffer).getUint16(0, false);
-            console.log('Credential ID length:', credentialIdLength);
-            pointer += 2;
-            
-            // Ensure we have enough data for the credential ID
-            if (pointer + credentialIdLength > authData.byteLength) {
-                throw new WebAuthnCryptoError('Invalid credential ID length in authenticator data');
-            }
-            
-            this.credentialId = new Uint8Array(authData.slice(pointer, pointer + credentialIdLength));
-            pointer += credentialIdLength;
-            
-            // Validate credential ID
-            if (this.credentialId.length === 0) {
-                throw new WebAuthnCryptoError('Empty credential ID received from authenticator');
-            }
+                if (this.credentialId.length === 0) {
+                    throw new WebAuthnCryptoError('Empty credential ID received from authenticator');
+                }
 
-            // Extract and parse the public key
-            // Extract the public key bytes
-            const publicKeyBytes = authData.slice(pointer);
-            const publicKeyCBOR = await CBOR.decodeFirst(publicKeyBytes);
-            
-            // Validate the COSE key format
-            if (!publicKeyCBOR.get(-2) || !publicKeyCBOR.get(-3)) {
-                throw new WebAuthnCryptoError('Invalid COSE key format: missing coordinates');
+                const publicKeyBytes = authData.slice(pointer);
+                const publicKeyCBOR = await CBOR.decodeFirst(publicKeyBytes);
+
+                if (!publicKeyCBOR.get(-2) || !publicKeyCBOR.get(-3)) {
+                    throw new WebAuthnCryptoError('Invalid COSE key format: missing coordinates');
+                }
+
+                const toBase64Url = (buffer: ArrayBuffer): string => {
+                    return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+                        .replace(/\+/g, '-')
+                        .replace(/\//g, '_')
+                        .replace(/=/g, '');
+                };
+
+                const jwk = {
+                    kty: 'EC',
+                    crv: 'P-256',
+                    x: toBase64Url(publicKeyCBOR.get(-2)),
+                    y: toBase64Url(publicKeyCBOR.get(-3)),
+                    ext: true
+                };
+
+                this.publicKey = await crypto.subtle.importKey(
+                    'jwk',
+                    jwk,
+                    {
+                        name: 'ECDSA',
+                        namedCurve: 'P-256'
+                    },
+                    true,
+                    ['verify']
+                );
+
+                await this.storeInIndexedDB<CredentialData>('credentialData', {
+                    id: 'credentialId',
+                    value: this.credentialId
+                });
+
+                return {
+                    type: 'webauthn',
+                    credentialId: this.credentialId,
+                    publicKey: this.publicKey
+                };
             }
 
-            // Log key details for debugging
-            console.log('COSE key type:', publicKeyCBOR.get(1));  // 2 means EC2
-            console.log('COSE key curve:', publicKeyCBOR.get(-1)); // 1 means P-256
-            
-            // Helper function to convert to base64url format
-            const toBase64Url = (buffer: ArrayBuffer): string => {
-                // First convert to regular base64
-                const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-                // Then convert to base64url by replacing characters
-                return base64
-                    .replace(/\+/g, '-')
-                    .replace(/\//g, '_')
-                    .replace(/=/g, '');
-            };
+            return await this.generateFallbackCredential();
 
-            // Convert COSE format to JWK
-            const jwk = {
-                kty: 'EC',
-                crv: 'P-256',
-                x: toBase64Url(publicKeyCBOR.get(-2)),
-                y: toBase64Url(publicKeyCBOR.get(-3)),
-                ext: true
-            };
-
-            // Import the public key using JWK format
-            this.publicKey = await crypto.subtle.importKey(
-                'jwk',
-                jwk,
-                {
-                    name: 'ECDSA',
-                    namedCurve: 'P-256'
-                },
-                true,
-                ['verify']
-            );
-
-            // Store credential ID for later use
-            await this.storeInIndexedDB<CredentialData>('credentialData', {
-                id: 'credentialId',
-                value: this.credentialId
-            });
-
-            return {
-                credentialId: this.credentialId,
-                publicKey: this.publicKey
-            };
         } catch (error) {
-            console.error('Detailed error:', error);
-            if (error instanceof TypeError) {
-                throw new WebAuthnCryptoError(`Invalid parameter or operation: ${error.message}`);
-            } else if (error instanceof DOMException) {
-                throw new WebAuthnCryptoError(`WebAuthn operation failed: ${error.name} - ${error.message}`);
+            if (error instanceof WebAuthnCryptoError) {
+                return await this.generateFallbackCredential();
             }
-            throw new WebAuthnCryptoError(`Failed to generate key pair: ${error.message}`);
+            throw error;
         }
+    }
+
+    private async isWebAuthnSupported(): Promise<boolean> {
+        if (!window.isSecureContext) return false;
+        if (!window.PublicKeyCredential) return false;
+        return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    }
+
+    private async generateFallbackCredential(): Promise<any> {
+        const authKey = await this.generateSecureRandomKey();
+        const qrData = {
+            key: authKey,
+            timestamp: Date.now(),
+            origin: window.location.origin
+        };
+
+        const qrCode = await QRCode.toDataURL(JSON.stringify(qrData), {
+            errorCorrectionLevel: 'H',
+            margin: 1,
+            width: 256
+        });
+
+        const recoveryCode = this.generateRecoveryCode(authKey);
+        await this.storeFallbackCredentials(authKey, recoveryCode);
+
+        return {
+            type: 'fallback',
+            qrCode,
+            recoveryCode
+        };
+    }
+
+    private async generateSecureRandomKey(): Promise<string> {
+        const buffer = new Uint8Array(32);
+        crypto.getRandomValues(buffer);
+        return Array.from(buffer)
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+    }
+
+    private generateRecoveryCode(key: string): string {
+        return key
+            .slice(0, 16)
+            .match(/.{4}/g)!
+            .join('-')
+            .toUpperCase();
+    }
+
+    private async storeFallbackCredentials(key: string, recoveryCode: string): Promise<void> {
+        const encryptedData = {
+            key: await this.encryptData(key),
+            recoveryCode: await this.encryptData(recoveryCode),
+            timestamp: Date.now()
+        };
+
+        await this.storeInIndexedDB('fallbackCredentials', {
+            id: 'fallback',
+            value: encryptedData
+        });
+    }
+
+    private async encryptData(data: string): Promise<string> {
+        const encoder = new TextEncoder();
+        const dataBuffer = encoder.encode(data);
+
+        const key = await crypto.subtle.generateKey(
+            {
+                name: 'AES-GCM',
+                length: 256
+            },
+            true,
+            ['encrypt', 'decrypt']
+        );
+
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const encrypted = await crypto.subtle.encrypt(
+            {
+                name: 'AES-GCM',
+                iv
+            },
+            key,
+            dataBuffer
+        );
+
+        const encryptedBase64 = btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+        const ivBase64 = btoa(String.fromCharCode(...iv));
+
+        return JSON.stringify({
+            encrypted: encryptedBase64,
+            iv: ivBase64
+        });
     }
 
     // Encrypt data using AES-GCM and protect the key with WebAuthn
@@ -396,37 +430,5 @@ export class WebAuthnCrypto {
             request.onsuccess = () => resolve(request.result as T);
             request.onerror = () => reject(request.error);
         });
-    }
-}
-
-// Example usage
-async function main() {
-    const webAuthnCrypto = new WebAuthnCrypto();
-    
-    try {
-        // Generate WebAuthn key pair
-        console.log('Generating WebAuthn key pair...');
-        const keyPair = await webAuthnCrypto.generateKeyPair();
-        
-        // Test encryption
-        const deviceShare = 'This is a sensitive device share that needs to be encrypted';
-        console.log('Encrypting device share...');
-        await webAuthnCrypto.encryptDeviceShare(deviceShare);
-        
-        // Test decryption
-        console.log('Decrypting device share...');
-        const decrypted = await webAuthnCrypto.decryptDeviceShare();
-        
-        console.log('Original device share:', deviceShare);
-        console.log('Decrypted device share:', decrypted);
-        console.log('Encryption/decryption successful!');
-    } catch (error) {
-        if (error instanceof WebAuthnCryptoError) {
-            console.error('WebAuthn crypto error:', error.message);
-        } else if (error instanceof DatabaseError) {
-            console.error('Database error:', error.message);
-        } else {
-            console.error('Unexpected error:', error);
-        }
     }
 }
