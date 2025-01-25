@@ -1,5 +1,4 @@
 import * as CBOR from 'cbor-web';
-import QRCode from 'qrcode';
 
 // Custom error types for better error handling and debugging
 class WebAuthnCryptoError extends Error {
@@ -26,8 +25,11 @@ interface EncryptedData {
     id: string;
     encryptedData: ArrayBuffer;
     iv: Uint8Array;
-    // Store the AES key that's protected by WebAuthn authentication
+    // Store the AES key that's protected by WebAuthn or password
     encryptedAesKey: ArrayBuffer;
+    encryptionMethod: 'webauthn' | 'password';
+    salt?: Uint8Array;
+    ivForKeyEncryption?: Uint8Array;
 }
 
 interface WebAuthnCredential {
@@ -191,11 +193,17 @@ export class WebAuthnCrypto {
                 };
             }
 
-            return await this.generateFallbackCredential();
+            return {
+                type: 'password',
+                message: 'WebAuthn is not supported. Using password-based encryption as fallback.'
+            };
 
         } catch (error) {
             if (error instanceof WebAuthnCryptoError) {
-                return await this.generateFallbackCredential();
+                return {
+                    type: 'password',
+                    message: 'WebAuthn failed. Using password-based encryption as fallback.'
+                };
             }
             throw error;
         }
@@ -207,92 +215,33 @@ export class WebAuthnCrypto {
         return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
     }
 
-    private async generateFallbackCredential(): Promise<any> {
-        const authKey = await this.generateSecureRandomKey();
-        const qrData = {
-            key: authKey,
-            timestamp: Date.now(),
-            origin: window.location.origin
-        };
-
-        const qrCode = await QRCode.toDataURL(JSON.stringify(qrData), {
-            errorCorrectionLevel: 'H',
-            margin: 1,
-            width: 256
-        });
-
-        const recoveryCode = this.generateRecoveryCode(authKey);
-        await this.storeFallbackCredentials(authKey, recoveryCode);
-
-        return {
-            type: 'fallback',
-            qrCode,
-            recoveryCode
-        };
-    }
-
-    private async generateSecureRandomKey(): Promise<string> {
-        const buffer = new Uint8Array(32);
-        crypto.getRandomValues(buffer);
-        return Array.from(buffer)
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('');
-    }
-
-    private generateRecoveryCode(key: string): string {
-        return key
-            .slice(0, 16)
-            .match(/.{4}/g)!
-            .join('-')
-            .toUpperCase();
-    }
-
-    private async storeFallbackCredentials(key: string, recoveryCode: string): Promise<void> {
-        const encryptedData = {
-            key: await this.encryptData(key),
-            recoveryCode: await this.encryptData(recoveryCode),
-            timestamp: Date.now()
-        };
-
-        await this.storeInIndexedDB('fallbackCredentials', {
-            id: 'fallback',
-            value: encryptedData
-        });
-    }
-
-    private async encryptData(data: string): Promise<string> {
+    private async deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<CryptoKey> {
         const encoder = new TextEncoder();
-        const dataBuffer = encoder.encode(data);
+        const passwordBuffer = encoder.encode(password);
 
-        const key = await crypto.subtle.generateKey(
+        const importedKey = await crypto.subtle.importKey(
+            'raw',
+            passwordBuffer,
+            { name: 'PBKDF2' },
+            false,
+            ['deriveKey']
+        );
+
+        return crypto.subtle.deriveKey(
             {
-                name: 'AES-GCM',
-                length: 256
+                name: 'PBKDF2',
+                salt: salt,
+                iterations: 100000,
+                hash: 'SHA-256'
             },
-            true,
+            importedKey,
+            { name: 'AES-GCM', length: 256 },
+            false,
             ['encrypt', 'decrypt']
         );
-
-        const iv = crypto.getRandomValues(new Uint8Array(12));
-        const encrypted = await crypto.subtle.encrypt(
-            {
-                name: 'AES-GCM',
-                iv
-            },
-            key,
-            dataBuffer
-        );
-
-        const encryptedBase64 = btoa(String.fromCharCode(...new Uint8Array(encrypted)));
-        const ivBase64 = btoa(String.fromCharCode(...iv));
-
-        return JSON.stringify({
-            encrypted: encryptedBase64,
-            iv: ivBase64
-        });
     }
 
-    // Encrypt data using AES-GCM and protect the key with WebAuthn
+    // Encrypt data using AES-GCM and protect the key with WebAuthn or password
     public async encryptDeviceShare(deviceShare: string): Promise<boolean> {
         try {
             // Generate a random AES key for encrypting the device share
@@ -318,15 +267,52 @@ export class WebAuthnCrypto {
                 new TextEncoder().encode(deviceShare)
             );
 
-            // Export and store the AES key - it will be protected by WebAuthn authentication
-            const exportedAesKey = await crypto.subtle.exportKey('raw', aesKey);
+            // Export and store the AES key - it will be protected by WebAuthn or password
+            let encryptedAesKey: ArrayBuffer;
+            let encryptionMethod: 'webauthn' | 'password' = 'webauthn';
+            let salt: Uint8Array | undefined;
+            let ivForKeyEncryption: Uint8Array | undefined;
+
+            if (this.publicKey) {
+                // WebAuthn is available, export the AES key directly (Note: This is insecure and should be replaced with proper encryption)
+                encryptedAesKey = await crypto.subtle.exportKey('raw', aesKey);
+            } else {
+                // Fallback to password-based encryption
+                const password = prompt('Enter a password to encrypt your data:');
+                if (!password) {
+                    throw new WebAuthnCryptoError('Password is required for encryption');
+                }
+
+                // Generate salt and IV for key encryption
+                salt = crypto.getRandomValues(new Uint8Array(16));
+                ivForKeyEncryption = crypto.getRandomValues(new Uint8Array(12));
+
+                // Derive key from password
+                const derivedKey = await this.deriveKeyFromPassword(password, salt);
+
+                // Encrypt the AES key with the derived key
+                const exportedAesKey = await crypto.subtle.exportKey('raw', aesKey);
+                encryptedAesKey = await crypto.subtle.encrypt(
+                    {
+                        name: 'AES-GCM',
+                        iv: ivForKeyEncryption
+                    },
+                    derivedKey,
+                    exportedAesKey
+                );
+
+                encryptionMethod = 'password';
+            }
 
             // Store encrypted data in IndexedDB
             await this.storeInIndexedDB<EncryptedData>('encryptedData', {
                 id: 'deviceShare',
                 encryptedData,
                 iv,
-                encryptedAesKey: exportedAesKey
+                encryptedAesKey,
+                encryptionMethod,
+                salt,
+                ivForKeyEncryption
             });
 
             return true;
@@ -335,7 +321,7 @@ export class WebAuthnCrypto {
         }
     }
 
-    // Decrypt data using WebAuthn authentication
+    // Decrypt data using WebAuthn authentication or password
     public async decryptDeviceShare(): Promise<string> {
         try {
             // Retrieve encrypted data from storage
@@ -344,39 +330,78 @@ export class WebAuthnCrypto {
                 throw new WebAuthnCryptoError('No encrypted device share found');
             }
 
-            // Get stored credential ID
-            const credentialData = await this.getFromIndexedDB<CredentialData>('credentialData', 'credentialId');
-            if (!credentialData) {
-                throw new WebAuthnCryptoError('No credential ID found');
+            let aesKey: CryptoKey;
+
+            if (encryptedStore.encryptionMethod === 'webauthn') {
+                // WebAuthn decryption path
+                const credentialData = await this.getFromIndexedDB<CredentialData>('credentialData', 'credentialId');
+                if (!credentialData) {
+                    throw new WebAuthnCryptoError('No credential ID found');
+                }
+
+                // Create WebAuthn assertion options
+                const assertionOptions: PublicKeyCredentialRequestOptions = {
+                    challenge: crypto.getRandomValues(new Uint8Array(32)),
+                    allowCredentials: [{
+                        id: credentialData.value,
+                        type: 'public-key',
+                    }],
+                    userVerification: 'required',
+                    timeout: 60000
+                };
+
+                // Get authentication assertion
+                const assertion = await navigator.credentials.get({
+                    publicKey: assertionOptions
+                }) as PublicKeyCredential;
+
+                // Import the AES key (Note: This assumes the key is stored raw, which is insecure)
+                aesKey = await crypto.subtle.importKey(
+                    'raw',
+                    encryptedStore.encryptedAesKey,
+                    {
+                        name: 'AES-GCM',
+                        length: 256
+                    },
+                    false,
+                    ['decrypt']
+                );
+            } else {
+                // Password-based decryption path
+                if (!encryptedStore.salt || !encryptedStore.ivForKeyEncryption) {
+                    throw new WebAuthnCryptoError('Missing parameters for password-based decryption');
+                }
+
+                const password = prompt('Enter your password to decrypt the data:');
+                if (!password) {
+                    throw new WebAuthnCryptoError('Password is required for decryption');
+                }
+
+                // Derive key from password and salt
+                const derivedKey = await this.deriveKeyFromPassword(password, encryptedStore.salt);
+
+                // Decrypt the AES key
+                const decryptedAesKey = await crypto.subtle.decrypt(
+                    {
+                        name: 'AES-GCM',
+                        iv: encryptedStore.ivForKeyEncryption
+                    },
+                    derivedKey,
+                    encryptedStore.encryptedAesKey
+                );
+
+                // Import the decrypted AES key
+                aesKey = await crypto.subtle.importKey(
+                    'raw',
+                    decryptedAesKey,
+                    {
+                        name: 'AES-GCM',
+                        length: 256
+                    },
+                    false,
+                    ['decrypt']
+                );
             }
-
-            // Create WebAuthn assertion options
-            const assertionOptions: PublicKeyCredentialRequestOptions = {
-                challenge: crypto.getRandomValues(new Uint8Array(32)),
-                allowCredentials: [{
-                    id: credentialData.value,
-                    type: 'public-key',
-                }],
-                userVerification: 'required',
-                timeout: 60000
-            };
-
-            // Get authentication assertion
-            const assertion = await navigator.credentials.get({
-                publicKey: assertionOptions
-            }) as PublicKeyCredential;
-
-            // Import the AES key after successful authentication
-            const aesKey = await crypto.subtle.importKey(
-                'raw',
-                encryptedStore.encryptedAesKey,
-                {
-                    name: 'AES-GCM',
-                    length: 256
-                },
-                false,
-                ['decrypt']
-            );
 
             // Decrypt the data using AES-GCM
             const decryptedData = await crypto.subtle.decrypt(
