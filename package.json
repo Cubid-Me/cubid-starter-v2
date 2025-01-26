@@ -41,6 +41,7 @@
     "@rainbow-me/rainbowkit": "^2.2.3",
     "@supabase/supabase-js": "^2.48.0",
     "@tanstack/react-query": "^5.64.2",
+    "axios": "^1.7.9",
     "bs58": "^6.0.0",
     "cbor-web": "^10.0.3",
     "class-variance-authority": "^0.7.0",

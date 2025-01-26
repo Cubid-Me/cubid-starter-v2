@@ -1,3 +1,4 @@
+// Import necessary dependencies
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Wallet } from './nearWalletConfig';
 import { WalletIcon, Plus } from 'lucide-react';
@@ -7,7 +8,9 @@ import { useAuth } from '@/lib/useAuth';
 import { supabase } from '@/lib/supabase';
 import { WebAuthnCrypto } from '@/lib/webAuthnEncypt';
 import { useAccount, useDisconnect } from 'wagmi';
+import axios from 'axios';
 
+// Define TypeScript interfaces for type safety
 interface WalletComp {
     type: 'evm' | 'near';
 }
@@ -23,10 +26,20 @@ interface WalletStates {
     near: WalletInfo[];
 }
 
+// Create an axios instance with default configuration for API calls
+const api = axios.create({
+    baseURL: '',
+    headers: {
+        'Content-Type': 'application/json'
+    }
+});
+
+// Initialize wallet configuration for NEAR protocol
 export const wallet = new Wallet({
     createAccessKeyFor: 'registry.i-am-human.near',
 });
 
+// Initialize CubidSDK with environment variables
 const sdk = new CubidSDK(
     process.env.NEXT_PUBLIC_DAPP_ID,
     process.env.NEXT_PUBLIC_API_KEY
@@ -36,12 +49,15 @@ wallet.startUp();
 
 const WebAuthN = new WebAuthnCrypto();
 
+// Component to display individual wallet information
 const WalletInfoDisplay = ({ address, explorerUrl, type, walletType, timestamp }) => {
+    // Helper function to truncate wallet addresses for display
     const truncateAddress = (addr: string) => {
         if (!addr) return '';
         return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
     };
 
+    // Helper function to format timestamps
     const formatDate = (timestamp: number) => {
         return new Date(timestamp).toLocaleString();
     };
@@ -69,9 +85,6 @@ const WalletInfoDisplay = ({ address, explorerUrl, type, walletType, timestamp }
                         Copy
                     </button>
                 </div>
-                <div className="text-xs text-gray-500">
-                    Connected: {formatDate(timestamp)}
-                </div>
                 <div className="flex justify-between">
                     <a
                         href={explorerUrl}
@@ -87,26 +100,7 @@ const WalletInfoDisplay = ({ address, explorerUrl, type, walletType, timestamp }
     );
 };
 
-const AddWalletButton = ({ onClick }) => (
-    <button
-        onClick={onClick}
-        className="group w-full relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 p-0.5 transition-all duration-500 hover:scale-[1.01] hover:shadow-xl hover:shadow-blue-500/25"
-    >
-        <div className="relative flex items-center justify-between rounded-2xl bg-black px-6 py-4 transition-all duration-500 group-hover:bg-opacity-90">
-            <div className="flex items-center gap-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 p-2">
-                    <Plus className="h-5 w-5 text-white" />
-                </div>
-                <div className="flex flex-col">
-                    <span className="text-lg font-semibold text-white">
-                        Add New Wallet
-                    </span>
-                </div>
-            </div>
-        </div>
-    </button>
-);
-
+// Component for wallet connection options
 const AddWalletOptions = ({ onConnectWallet, onCreateWallet, type, loading }) => (
     <div className="flex flex-col gap-4 mt-4">
         {type === 'evm' ? (
@@ -136,6 +130,7 @@ const AddWalletOptions = ({ onConnectWallet, onCreateWallet, type, loading }) =>
     </div>
 );
 
+// Main wallet component
 export const WalletComponent = (props: WalletComp) => {
     const inEvm = props.type === 'evm';
     const { disconnect } = useDisconnect();
@@ -146,18 +141,19 @@ export const WalletComponent = (props: WalletComp) => {
     const [sdkResponse, setSdkResponse] = useState<any>(null);
     const { address: evmAddress, isConnected: isEvmConnected } = useAccount();
 
+    // Fetch wallets for both EVM and NEAR chains
     const fetchWallets = useCallback(async () => {
         if (!user?.uuid) return;
         try {
             const [evmResponse, nearResponse] = await Promise.all([
-                fetch(`/api/wallets?userId=${user.uuid}&type=evm`),
-                fetch(`/api/wallets?userId=${user.uuid}&type=near`),
+                api.post(`https://passport.cubid.me/api/wallet/fetch`, { dapp_uid: user.uuid, chain: 'evm' }),
+                api.post(`https://passport.cubid.me/api/wallet/fetch`, { dapp_uid: user.uuid, chain: 'near' })
             ]);
-            
-            const evmWallets = evmResponse.ok ? await evmResponse.json() : [];
-            const nearWallets = nearResponse.ok ? await nearResponse.json() : [];
-            
-            setWallets({ evm: evmWallets, near: nearWallets });
+
+            setWallets({
+                evm: evmResponse.data.data || [],
+                near: nearResponse.data.data || []
+            });
         } catch (error) {
             console.error('Error fetching wallets:', error);
         }
@@ -166,20 +162,20 @@ export const WalletComponent = (props: WalletComp) => {
     const saveWallets = useCallback(async (type: 'evm' | 'near', wallets: WalletInfo[]) => {
         if (!user?.uuid) return;
         try {
-            await fetch('/api/wallets', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId: user.uuid,
-                    type,
-                    wallets
-                }),
-            });
+            wallets.map(async (item) => {
+                await api.post('https://passport.cubid.me/api/wallet/save', {
+                    dapp_uid: user.uuid,
+                    chain: type,
+                    public_key: item.address
+                });
+            })
+
         } catch (error) {
             console.error('Error saving wallets:', error);
         }
     }, [user?.uuid]);
 
+    // Effect hooks for data synchronization
     useEffect(() => {
         fetchWallets();
     }, [fetchWallets]);
@@ -192,12 +188,13 @@ export const WalletComponent = (props: WalletComp) => {
         saveWallets('near', wallets.near);
     }, [wallets.near, saveWallets]);
 
+    // Handle EVM wallet connections
     useEffect(() => {
         if (isEvmConnected && evmAddress) {
             setWallets((prev: any) => {
                 const existingWallet = prev.evm.find((w: WalletInfo) => w.address === evmAddress);
                 if (existingWallet) return prev;
-                
+
                 const timestamp = Date.now();
                 return {
                     ...prev,
@@ -208,6 +205,7 @@ export const WalletComponent = (props: WalletComp) => {
         }
     }, [evmAddress, isEvmConnected, disconnect]);
 
+    // Check for NEAR wallet connections
     useEffect(() => {
         const checkNearWallet = async () => {
             const wallet_data = (wallet as any).accountId;
@@ -229,6 +227,7 @@ export const WalletComponent = (props: WalletComp) => {
         checkNearWallet();
     }, []);
 
+    // Generate explorer URLs based on chain type
     const getExplorerUrl = useCallback((address: string) => {
         if (inEvm) {
             return `https://etherscan.io/address/${address}`;
@@ -236,6 +235,7 @@ export const WalletComponent = (props: WalletComp) => {
         return `https://explorer.near.org/accounts/${address}`;
     }, [inEvm]);
 
+    // Create user in the SDK if needed
     const createUser = useCallback(async () => {
         if (user && !user.uuid) {
             setLoading('createUser');
@@ -257,6 +257,7 @@ export const WalletComponent = (props: WalletComp) => {
         createUser();
     }, [createUser]);
 
+    // Create new on-chain account
     const createOnChainAccount = async () => {
         setLoading('creating');
         try {
@@ -300,6 +301,7 @@ export const WalletComponent = (props: WalletComp) => {
         setShowAddOptions(true);
     };
 
+    // Sort wallets by timestamp for display
     const currentNetworkWallets = inEvm ? wallets.evm : wallets.near;
     const sortedWallets = [...currentNetworkWallets].sort((a, b) => b.timestamp - a.timestamp);
 
@@ -321,9 +323,9 @@ export const WalletComponent = (props: WalletComp) => {
 
                 {sortedWallets.map((wallet) => (
                     <WalletInfoDisplay
-                        key={wallet.address}
-                        address={wallet.address}
-                        explorerUrl={getExplorerUrl(wallet.address)}
+                        key={wallet.public_key ?? wallet.address}
+                        address={wallet.public_key ?? wallet.address}
+                        explorerUrl={getExplorerUrl(wallet.public_key ?? wallet.address)}
                         type={inEvm ? 'EVM' : 'NEAR'}
                         walletType={wallet.type}
                         timestamp={wallet.timestamp}
